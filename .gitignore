@@ -1,0 +1,17 @@
+/target
+**/*.rs.bk
+
+# Local data: never commit profiles, vaults or secrets.
+*.redb
+*.vault
+/profiles/
+.env
+.env.*
+*.pem
+*.key
+
+# Local agent/editor settings.
+.claude/
+.impeccable/
+.vscode/
+.idea/

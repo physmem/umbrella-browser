@@ -1,0 +1,33 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace.dependencies]
+argon2 = "0.6.0"
+chacha20poly1305 = { version = "0.11.0", features = ["zeroize"] }
+getrandom = "0.4.3"
+redb = "5.0.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tempfile = "3.27.0"
+thiserror = "2.0.21"
+toml = "1.2.1"
+url = "2.5.8"
+zeroize = { version = "1.9.2", features = ["derive"] }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+debug = false
+incremental = false
+
+# Fast iteration builds that still feel like release.
+[profile.dev.package."*"]
+opt-level = 2
