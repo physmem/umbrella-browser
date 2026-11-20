@@ -12,6 +12,37 @@ pub const LOGIN_BRIDGE_JS: &str = include_str!("login_bridge.js");
 pub enum LoginMessage {
     FormSeen,
     Submitted(Credential),
+    /// A new-password field took focus; the page may show an offer.
+    SuggestWanted,
+    /// The user accepted the offer; generate and fill.
+    SuggestAccepted,
+}
+
+/// Colours for the in-page offer, as CSS colour strings from the theme.
+pub struct OfferTheme {
+    pub surface: String,
+    pub text: String,
+    pub muted: String,
+    pub border: String,
+    pub hover: String,
+    pub selection: String,
+}
+
+/// The browser's answer to `SuggestWanted`: show the offer, in these colours.
+pub fn offer_message(theme: &OfferTheme) -> String {
+    serde_json::json!({
+        "umbrella": "login",
+        "kind": "offer",
+        "theme": {
+            "surface": theme.surface,
+            "text": theme.text,
+            "muted": theme.muted,
+            "border": theme.border,
+            "hover": theme.hover,
+            "selection": theme.selection,
+        },
+    })
+    .to_string()
 }
 
 #[derive(Deserialize)]
@@ -32,6 +63,8 @@ pub fn parse_message(json: &str) -> Option<LoginMessage> {
     }
     match wire.kind.as_str() {
         "form" => Some(LoginMessage::FormSeen),
+        "suggest" => Some(LoginMessage::SuggestWanted),
+        "suggest-accept" => Some(LoginMessage::SuggestAccepted),
         "submit" if !wire.password.is_empty() => Some(LoginMessage::Submitted(Credential {
             // Moved, not copied, so only the zeroizing owner holds the text.
             username: Zeroizing::new(wire.username),
@@ -53,6 +86,19 @@ pub fn fill_script(origin: &Origin, username: &str, password: &str) -> Zeroizing
     push_json(&mut script, password);
     script.push_str(";\n");
     script.push_str(FILL_TEMPLATE);
+    script
+}
+
+/// Fills a generated password into the focused new-password field and the
+/// confirm field beside it. Like `fill_script`, it re-checks the origin.
+pub fn generated_fill_script(origin: &Origin, password: &str) -> Zeroizing<String> {
+    let mut script = Zeroizing::new(String::with_capacity(GENERATED_TEMPLATE.len() + 256));
+    script.push_str("(() => {\nconst want = ");
+    push_json(&mut script, &origin.canonical());
+    script.push_str(";\nconst pass = ");
+    push_json(&mut script, password);
+    script.push_str(";\n");
+    script.push_str(GENERATED_TEMPLATE);
     script
 }
 
@@ -98,9 +144,71 @@ set(pw, pass);
 return true;
 })()"#;
 
+/// The target is the focused field: the offer keeps focus there. Its confirm
+/// field is the next password field in the form, or the one before it when
+/// the user started on the confirm field and the first is still empty.
+const GENERATED_TEMPLATE: &str = r#"const l = location;
+const port = l.port || (l.protocol === "https:" ? "443" : "80");
+if (`${l.protocol}//${l.hostname}:${port}` !== want) return false;
+const pw = document.activeElement;
+if (!(pw instanceof HTMLInputElement) || pw.type !== "password") return false;
+const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+const set = (el, v) => {
+  setter.call(el, v);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+};
+const all = [...(pw.form || document).querySelectorAll("input[type=password]")];
+const i = all.indexOf(pw);
+set(pw, pass);
+if (all[i + 1]) set(all[i + 1], pass);
+else if (all.length === 2 && i === 1 && !all[0].value) set(all[0], pass);
+pw.dispatchEvent(new CustomEvent("umbrella-generated", { bubbles: true, composed: true }));
+return true;
+})()"#;
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_suggest_messages() {
+        assert!(matches!(
+            parse_message(r#"{"umbrella":"login","kind":"suggest"}"#),
+            Some(LoginMessage::SuggestWanted)
+        ));
+        assert!(matches!(
+            parse_message(r#"{"umbrella":"login","kind":"suggest-accept"}"#),
+            Some(LoginMessage::SuggestAccepted)
+        ));
+    }
+
+    #[test]
+    fn generated_fill_checks_origin_and_escapes() -> Result<(), browser_core::vault::OriginError> {
+        let origin = Origin::parse("https://example.com/signup")?;
+        let script = generated_fill_script(&origin, "a\"b</script>");
+        assert!(script.contains(r#"const want = "https://example.com:443";"#));
+        assert!(script.contains(r#"const pass = "a\"b</script>";"#));
+        assert!(script.contains("!== want) return false;"));
+        Ok(())
+    }
+
+    #[test]
+    fn offer_message_is_tagged_json() -> Result<(), serde_json::Error> {
+        let theme = OfferTheme {
+            surface: "#3a3a3c".into(),
+            text: "#f5f5f7".into(),
+            muted: "#aeaeb2".into(),
+            border: "#ffffff1f".into(),
+            hover: "#f5f5f712".into(),
+            selection: "#0071e338".into(),
+        };
+        let value: serde_json::Value = serde_json::from_str(&offer_message(&theme))?;
+        assert_eq!(value["umbrella"], "login");
+        assert_eq!(value["kind"], "offer");
+        assert_eq!(value["theme"]["surface"], "#3a3a3c");
+        Ok(())
+    }
 
     #[test]
     fn parses_form_and_submit() {

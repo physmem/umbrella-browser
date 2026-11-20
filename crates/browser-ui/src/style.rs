@@ -18,6 +18,7 @@ pub mod icon {
     pub const REFRESH: &str = "\u{E72C}";
     pub const STOP: &str = "\u{E711}";
     pub const ADD: &str = "\u{E710}";
+    pub const REMOVE: &str = "\u{E738}";
     pub const CLOSE: &str = "\u{E8BB}";
     pub const MINIMIZE: &str = "\u{E921}";
     pub const MAXIMIZE: &str = "\u{E922}";
@@ -66,6 +67,19 @@ pub fn mix(from: Hsla, to: Hsla, t: f32) -> Hsla {
         lerp(a.blue, b.blue),
         lerp(a.alpha, b.alpha),
     ))
+}
+
+/// A CSS `rgba()` string, for UI the chrome hands to a page.
+pub fn css(color: Hsla) -> String {
+    let c = gpui::hsla_to_rgba(color);
+    let byte = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+    format!(
+        "rgba({}, {}, {}, {:.3})",
+        byte(c.red),
+        byte(c.green),
+        byte(c.blue),
+        c.alpha.clamp(0.0, 1.0)
+    )
 }
 
 pub fn backdrop(theme: &ThemeTokens) -> WindowBackgroundAppearance {

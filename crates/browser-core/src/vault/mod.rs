@@ -3,6 +3,7 @@
 
 pub mod crypto;
 pub mod dpapi;
+pub mod generator;
 pub mod origin;
 pub mod record;
 

@@ -254,7 +254,7 @@ Depth comes from the material first: tint over the DWM backdrop. A raised capsul
 - **Floating** (`shadow_lg`): The suggestion panel, the only floating surface.
 
 ### Named Rules
-**The Airspace Rule.** WebView2 is a child HWND, so GPUI cannot paint over a live page. Nothing overlaps a visible page. While suggestions are open, the page view is hidden. The panel draws in the page area over a snapshot of the page at 30% opacity. Every exit path restores the page: Enter, Escape, click away and Alt-Tab. Prompts live in the toolbar as pills, never over the form.
+**The Airspace Rule.** WebView2 is a child HWND, so GPUI cannot paint over a live page. Nothing overlaps a visible page. While suggestions are open, the page view is hidden. The panel draws in the page area over a snapshot of the page at 30% opacity. Every exit path restores the page: Enter, Escape, click away and Alt-Tab. Prompts live in the toolbar as pills, never over the form. The one exception is the generated-password offer: the page itself lays it out under the field, so GPUI paints nothing over the page (decision 0004).
 
 ## Shapes
 
@@ -289,6 +289,9 @@ Square (30px in the toolbar), 6px radius, glyph centred, hover wash. An on state
 
 ### Pill (vault fill, save, unlock, password)
 28px, capsule fill, `radius_lg`, `shadow_sm`, 10px left and 4px right padding, 6px gap, 12px text. Layout: muted key glyph, label (max 220px; click cycles accounts when there are several), one action button, then a 20px dismiss. The password variant swaps the label for a 150px inset field. That field uses field fill, a 4px radius and a focus border, and shows bullets only. The pill shows only the origin and username, never a password.
+
+### Password Offer (in page)
+Injected by the login bridge under a focused new-password field, in a closed shadow root, 4px below it. A card at `radius_lg` with 4px padding, at least as wide as the field, filled with the capsule colour made opaque, a 1px border-colour ring and a soft drop shadow (0 8px 24px, black at 28%). One 34px row, `radius_md`, 10px padding and gap: muted 12px key glyph, "Use a strong password" in 12px semibold text colour, then muted detail with an ellipsis. Hover gets the hover wash; ArrowDown selects with the row-selected fill, Enter accepts, Escape dismisses for that field. After a fill the row becomes a check glyph and "Strong password filled", with no hover, and leaves after 6s or when focus moves. Colours arrive from `ChromeColors` with each offer, so the offer follows the theme and high contrast. It never shows a password.
 
 ### Action Button
 22px, accent fill, `on_accent` 12px semibold text, 10px horizontal padding, 5px radius. Hover sets opacity to 0.88. Only one action button appears per pill.

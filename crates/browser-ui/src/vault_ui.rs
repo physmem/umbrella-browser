@@ -13,7 +13,11 @@ use browser_core::vault::{
 use gpui::{AppContext, Context, FocusHandle, KeyDownEvent, Window};
 use zeroize::Zeroizing;
 
+use browser_core::vault::generator;
+use browser_engine::login::OfferTheme;
+
 use crate::browser::Browser;
+use crate::style::css;
 
 /// What to do once the master password has been entered.
 pub enum AfterPassword {
@@ -59,6 +63,9 @@ pub struct VaultUi {
     pub secret_focus: FocusHandle,
     /// Argon2id is running on a worker thread.
     pub busy: bool,
+    /// The tab and origin last shown a generated-password offer. An accept
+    /// from anywhere else is ignored.
+    offered: Option<(TabId, Origin)>,
 }
 
 impl VaultUi {
@@ -70,6 +77,7 @@ impl VaultUi {
             secret: Zeroizing::default(),
             error: None,
             busy: false,
+            offered: None,
             secret_focus,
         }
     }
@@ -172,6 +180,47 @@ impl Browser {
             credential,
             update,
         });
+    }
+
+    /// A new-password field took focus. Answer with the offer, in the
+    /// theme's colours, only while suggestions are on and the tab is in front.
+    pub(crate) fn on_password_suggest(&mut self, tab: TabId, origin: Origin) {
+        if !self.settings.suggest_passwords || Some(tab) != self.active_id() {
+            return;
+        }
+        let c = self.colors;
+        let theme = OfferTheme {
+            // Opaque: the offer sits on page content, not on the glass.
+            surface: css(gpui::Hsla { alpha: 1.0, ..c.capsule }),
+            text: css(c.text),
+            muted: css(c.muted),
+            border: css(c.border),
+            hover: css(c.hover),
+            selection: css(c.selection),
+        };
+        if let Some(view) = self.view(tab)
+            && view.offer_password(&theme).is_ok()
+        {
+            self.vault.offered = Some((tab, origin));
+        }
+    }
+
+    /// The user took the offer: generate, fill, and let the plaintext go.
+    /// Saving follows the normal path when the page submits the form.
+    pub(crate) fn on_password_accept(&mut self, tab: TabId, origin: Origin) {
+        if !self.settings.suggest_passwords
+            || self.vault.offered.as_ref() != Some(&(tab, origin.clone()))
+        {
+            return;
+        }
+        self.vault.offered = None;
+        let password = match generator::generate(&self.settings.password_generator) {
+            Ok(p) => p,
+            Err(e) => return eprintln!("password generation failed: {e}"),
+        };
+        if let Some(view) = self.view(tab) {
+            let _ = view.fill_generated(&origin, &password);
+        }
     }
 
     pub(crate) fn accept_vault_prompt(&mut self, cx: &mut Context<Self>) {

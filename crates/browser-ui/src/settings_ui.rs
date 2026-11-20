@@ -5,6 +5,7 @@
 
 use browser_core::ThemeId;
 use browser_core::settings::{Startup, TrackingLevel};
+use browser_core::vault::generator::{self, GeneratorOptions};
 use gpui::{
     AnyElement, ColorExt, Context, FontWeight, InteractiveElement, IntoElement, ParentElement,
     SharedString, StatefulInteractiveElement, Styled, Window, div, img, prelude::*, px,
@@ -612,7 +613,7 @@ impl Browser {
                     ),
                     row(
                         "Fewer background processes",
-                        "Runs GPU and audio inside the main process. A tidier Task Manager, but one crash takes more down with it. Needs a restart.",
+                        "Runs audio inside the main process. One fewer entry in Task Manager, but an audio crash takes the browser down with it. Needs a restart.",
                         c,
                         self.switch("fewer-processes", s.engine.fewer_processes, cx, |s| {
                             s.engine.fewer_processes = !s.engine.fewer_processes
@@ -919,8 +920,120 @@ impl Browser {
                     ),
                 ],
             ))
+            .child(self.generator_group(cx))
             .child(self.group("Import", vec![block(self.import_section(true, cx))]))
             .into_any_element()
+    }
+
+    fn generator_group(&self, cx: &mut Context<Self>) -> AnyElement {
+        let s = &self.settings;
+        let c = self.colors;
+        let g = s.password_generator;
+        let strength = format!(
+            "{} characters, about {} bits of strength.",
+            g.effective_length(),
+            g.entropy_bits()
+        );
+        type Flip = fn(&mut GeneratorOptions);
+        let classes: [(&'static str, &str, &str, bool, Flip); 4] = [
+            ("gen-upper", "Uppercase letters", "A to Z", g.uppercase, |g| {
+                g.uppercase = !g.uppercase
+            }),
+            ("gen-lower", "Lowercase letters", "a to z", g.lowercase, |g| {
+                g.lowercase = !g.lowercase
+            }),
+            ("gen-digits", "Numbers", "0 to 9", g.digits, |g| g.digits = !g.digits),
+            (
+                "gen-symbols",
+                "Symbols",
+                "! @ # $ % ^ & * ( ) - _ = + [ ] { } ; : , . ? / ~",
+                g.symbols,
+                |g| g.symbols = !g.symbols,
+            ),
+        ];
+        let last_on = g.class_count() == 1;
+        let mut rows = vec![
+            row(
+                "Suggest strong passwords",
+                "When you focus a new-password field, offer a generated one just below it.",
+                c,
+                self.switch("gen-suggest", s.suggest_passwords, cx, |s| {
+                    s.suggest_passwords = !s.suggest_passwords
+                }),
+            ),
+            row(
+                "Length",
+                &strength,
+                c,
+                self.length_stepper(g.effective_length(), cx),
+            ),
+        ];
+        rows.extend(classes.into_iter().map(|(id, label, detail, on, flip)| {
+            // The last class on stays on: a password needs something to draw from.
+            let control = toggle(id, on, c, &self.springs);
+            let control = if on && last_on {
+                control.opacity(0.35).cursor_default()
+            } else {
+                control.on_click(cx.listener(move |this, _, _, cx| {
+                    this.update_settings(cx, |s| flip(&mut s.password_generator));
+                }))
+            };
+            row(label, detail, c, control)
+        }));
+        self.group("Password generator", rows)
+    }
+
+    /// Minus, the value, plus. Each end fades and stops at the allowed range.
+    fn length_stepper(&self, length: usize, cx: &mut Context<Self>) -> impl IntoElement {
+        let c = self.colors;
+        let step = |id: &'static str, glyph: &'static str, delta: isize, enabled: bool| {
+            div()
+                .id(id)
+                .size(px(26.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(6.0))
+                .font_family(ICON_FONT)
+                .text_size(px(10.0))
+                .child(glyph)
+                .when(!enabled, |d| d.opacity(0.35))
+                .when(enabled, |d| {
+                    d.cursor_pointer()
+                        .hover(|s| s.bg(c.hover))
+                        .active(|s| s.opacity(0.7))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.update_settings(cx, |s| {
+                                let g = &mut s.password_generator;
+                                g.length = g
+                                    .effective_length()
+                                    .saturating_add_signed(delta)
+                                    .clamp(generator::MIN_LENGTH, generator::MAX_LENGTH);
+                            });
+                        }))
+                })
+        };
+        let shorter = step("gen-shorter", icon::REMOVE, -1, length > generator::MIN_LENGTH);
+        let longer = step("gen-longer", icon::ADD, 1, length < generator::MAX_LENGTH);
+        div()
+            .flex()
+            .items_center()
+            .p(px(3.0))
+            .rounded(px(8.0))
+            .bg(c.field)
+            .border_1()
+            .border_color(c.border)
+            .child(shorter)
+            .child(
+                div()
+                    .w(px(36.0))
+                    .flex()
+                    .justify_center()
+                    .text_size(px(13.0))
+                    .font_weight(FontWeight::MEDIUM)
+                    .child(length.to_string()),
+            )
+            .child(longer)
     }
 
     // ---- building blocks ----------------------------------------------

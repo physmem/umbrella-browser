@@ -466,9 +466,27 @@ impl TabView {
         password: &str,
     ) -> Result<(), EngineError> {
         let script = login::fill_script(origin, username, password);
+        self.run_secret_script(&script)
+    }
+
+    /// Tells the page's login bridge to show the generated-password offer.
+    pub fn offer_password(&self, theme: &login::OfferTheme) -> Result<(), EngineError> {
+        let json = HSTRING::from(login::offer_message(theme));
+        unsafe { self.webview.PostWebMessageAsJson(&json)? };
+        Ok(())
+    }
+
+    /// Fills a freshly generated password into the focused new-password
+    /// field and its confirm field. The caller drops the password after.
+    pub fn fill_generated(&self, origin: &Origin, password: &str) -> Result<(), EngineError> {
+        let script = login::generated_fill_script(origin, password);
+        self.run_secret_script(&script)
+    }
+
+    fn run_secret_script(&self, script: &str) -> Result<(), EngineError> {
         // The UTF-16 copy WebView2 needs cannot be zeroized; it lives only
         // for this call. See decision 0002.
-        let wide = HSTRING::from(script.as_str());
+        let wide = HSTRING::from(script);
         let handler = ExecuteScriptCompletedHandler::create(Box::new(|_, _| Ok(())));
         unsafe { self.webview.ExecuteScript(&wide, &handler)? };
         Ok(())
@@ -789,6 +807,8 @@ impl TabView {
                 LoginMessage::Submitted(credential) => {
                     TabEvent::LoginSubmitted { origin, credential }
                 }
+                LoginMessage::SuggestWanted => TabEvent::PasswordSuggestWanted { origin },
+                LoginMessage::SuggestAccepted => TabEvent::PasswordSuggestAccepted { origin },
             };
             queue.push(id, event);
             Ok(())

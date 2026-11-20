@@ -25,7 +25,9 @@ This was also vibe slopped for fun purely to have my own browser I can work on a
   sites the built-in blocker cannot, YouTube included.
 - Keeps passwords in its own encrypted vault (XChaCha20-Poly1305, with the
   key derived by Argon2id or held by Windows DPAPI). Saved logins only ever
-  fill on the exact site they were saved for.
+  fill on the exact site they were saved for. On sign-up forms it offers a
+  generated password under the field; length and character sets are in
+  Settings > Passwords.
 - Has workspaces (separate sets of tabs with separate cookies), split view,
   a command palette, history search, find in page, reader view, and a page
   info panel showing the response headers and which other sites saw your IP.
@@ -123,7 +125,8 @@ the look of the chrome.
 
 - WebView2 cannot be drawn over, so menus and prompts that would normally
   float over a page sit in the toolbar instead, or hide the page while they
-  are open.
+  are open. The generated-password offer is the exception: the page draws
+  it under the field, so the page can also see or hide it.
 - Extensions have no toolbar buttons; their settings and popups open as
   tabs from Settings > Extensions.
 - Task Manager lists the page processes as "WebView2". That label comes

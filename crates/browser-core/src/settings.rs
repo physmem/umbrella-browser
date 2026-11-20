@@ -6,6 +6,7 @@ use crate::ThemeId;
 use crate::session::SessionError;
 use crate::spring::MotionStyle;
 use crate::store::KvStore;
+use crate::vault::generator::GeneratorOptions;
 
 const TABLE: &str = "settings";
 const KEY: &str = "current";
@@ -25,6 +26,10 @@ pub struct Settings {
     /// Also wrap the vault key with Windows DPAPI so it unlocks without a
     /// password for this Windows user. Off by default.
     pub vault_dpapi: bool,
+    /// Defaults for generated passwords.
+    pub password_generator: GeneratorOptions,
+    /// Offer a generated password when a new-password field is focused.
+    pub suggest_passwords: bool,
     pub block_ads: bool,
     pub strip_tracking: bool,
     pub start_page: StartPage,
@@ -52,6 +57,8 @@ impl Default for Settings {
             search_template: DEFAULT_SEARCH.to_owned(),
             vault_idle_lock_minutes: 15,
             vault_dpapi: false,
+            password_generator: GeneratorOptions::default(),
+            suggest_passwords: true,
             block_ads: true,
             strip_tracking: true,
             start_page: StartPage::default(),
@@ -131,8 +138,10 @@ pub struct EngineFlags {
     pub smooth_scrolling: bool,
     /// Let pages start playing sound without a click first.
     pub autoplay_sound: bool,
-    /// Run the GPU and audio services inside the browser process: fewer
-    /// entries in Task Manager, but one crash takes more down with it.
+    /// Run the audio service inside the browser process: one fewer entry in
+    /// Task Manager, but an audio crash takes the browser down with it. The
+    /// GPU stays in its own process: in WebView2, `--in-process-gpu` turns
+    /// off hardware video decode, and 60 fps video drops most frames.
     pub fewer_processes: bool,
     /// Keep WebRTC to the default route, so it cannot reveal local
     /// addresses or the real IP behind a VPN.
@@ -165,10 +174,7 @@ impl EngineFlags {
             args.push("--autoplay-policy=document-user-activation-required");
         }
         if self.fewer_processes {
-            args.extend([
-                "--in-process-gpu",
-                "--disable-features=AudioServiceOutOfProcess",
-            ]);
+            args.push("--disable-features=AudioServiceOutOfProcess");
         }
         if self.webrtc_protection {
             args.push("--force-webrtc-ip-handling-policy=default_public_interface_only");
@@ -394,10 +400,11 @@ mod tests {
                 "--disable-gpu",
                 "--disable-smooth-scrolling",
                 "--autoplay-policy=document-user-activation-required",
-                "--in-process-gpu",
                 "--disable-features=AudioServiceOutOfProcess",
             ]
         );
+        // Keeping the GPU in process kills hardware video decode.
+        assert!(!lean.browser_args().contains(&"--in-process-gpu"));
     }
 
     #[test]
@@ -407,6 +414,13 @@ mod tests {
         assert!(old.block_popups);
         assert_eq!(old.tracking_prevention, TrackingLevel::Balanced);
         assert!(old.engine.hardware_acceleration);
+        assert!(old.suggest_passwords);
+        assert_eq!(old.password_generator, GeneratorOptions::default());
+        let partial: Settings =
+            serde_json::from_str(r#"{"password_generator":{"length":32,"symbols":false}}"#)?;
+        assert_eq!(partial.password_generator.length, 32);
+        assert!(!partial.password_generator.symbols);
+        assert!(partial.password_generator.digits);
         Ok(())
     }
 

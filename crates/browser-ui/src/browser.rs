@@ -668,6 +668,8 @@ impl Browser {
             TabEvent::LoginSubmitted { origin, credential } => {
                 self.on_login_submitted(origin, credential)
             }
+            TabEvent::PasswordSuggestWanted { origin } => self.on_password_suggest(id, origin),
+            TabEvent::PasswordSuggestAccepted { origin } => self.on_password_accept(id, origin),
             TabEvent::DownloadStarted {
                 download,
                 file,

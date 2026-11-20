@@ -43,6 +43,14 @@ pub enum TabEvent {
         origin: Origin,
         credential: Credential,
     },
+    /// A new-password field took focus; answer with `offer_password`.
+    PasswordSuggestWanted {
+        origin: Origin,
+    },
+    /// The user accepted the in-page offer; answer with `fill_generated`.
+    PasswordSuggestAccepted {
+        origin: Origin,
+    },
     Suspended {
         ok: bool,
     },
